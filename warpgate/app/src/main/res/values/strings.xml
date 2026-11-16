@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">WarpGate</string>
+    <string name="notif_channel_vpn">VPN-подключение</string>
+    <string name="notif_channel_vpn_desc">Статус туннеля WarpGate</string>
+    <string name="notif_connected">Подключено — %1$s</string>
+    <string name="notif_connecting">Подключение…</string>
+</resources>

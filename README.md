@@ -1,0 +1,60 @@
+# WarpGate
+
+Android-клиент VPN с генерацией WARP-профилей, оптимизацией эндпоинтов, поддержкой **AmneziaWG**, **MASQUE** и импортом подписок в стиле Happ.
+
+## Возможности
+
+- **WARP-профили** — регистрация устройства в Cloudflare прямо из приложения (кнопка «+ → WARP-профиль»). Ключи x25519 генерируются на устройстве и не покидают его.
+- **Оптимизатор эндпоинтов** — перед подключением приложение замеряет RTT реального WireGuard-хендшейка до 27 эндпоинтов Cloudflare (162.159.192/193/195.x, 188.114.96/97.x на портах 2408/500/1701/4500) и автоматически выбирает самый быстрый. Показывает лучший и альтернативный варианты.
+- **AmneziaWG** — импорт конфигов `.conf` с обфускацией (параметры `Jc`, `Jmin`, `Jmax`, `S1`, `S2`, `H1–H4`, `I1–I5` в ядре) и подключение через ядро amneziawg-go.
+- **MASQUE** — WARP поверх HTTP/3 (`cf-connect-ip`, QUIC-датаграммы) — экспериментальный режим. Регистрация ECDSA-ключа (P-256), TLS client cert на 24 ч, пиннинг ключа сервера.
+- **Подписки как в Happ** — вставьте URL подписки (`https://…`, base64-тело) или список ссылок `vless://`, `vmess://`, `ss://`, `trojan://`, `hysteria2://` (hy2://). Узлы импортируются как профили.
+- Тёмная тема в стиле Happ, русский интерфейс, Material 3 (Jetpack Compose).
+
+## Архитектура
+
+| Слой | Технология |
+|---|---|
+| UI | Kotlin + Jetpack Compose, Material 3, тёмная тема |
+| VPN | Android `VpnService` + TUN fd → Go-ядро через gomobile |
+| Туннель WG/AWG | [amneziawg-go](https://github.com/amnezia-vpn/amneziawg-go) (форк в `warpcore/awg-fork`) |
+| MASQUE | [usque](https://github.com/Diniboy1123/usque) (форк в `warpcore/usque-fork`, MIT) |
+| Регистрация WARP | Go-ядро + API `api.cloudflareclient.com/v0a2158` |
+
+Go-ядро (`warpcore/`) собирается командой `gomobile bind` в `warpcore.aar` и предоставляет: `RegisterWarp`, `ScanEndpoints`, `TunnelStart/Stop/Stats` (WG/AWG), `MasqueRegister`, `MasqueStart/Stop`.
+
+### Патчи в форках
+
+- **awg-fork**: у amneziawg-go убрано поле `Reserved` в пакетах хендшейка (AWG использует свои magic-заголовки). Для WARP стандартный WireGuard требует client_id в reserved-байтах каждого пакета — добавлен `Device.SetWarpReserved([3]byte)`: исходящие типы пакетов получают reserved из client_id, входящие проверки маскируют его. Также добавлен экспорт `conn.AppendControlFn` для защиты UDP-сокетов (`VpnService.protect`) и обход WSAEFAULT на Windows/Go 1.26.
+- **usque-fork**: добавлен хук `api.DialControl` для защиты QUIC-сокета через `VpnService.protect`.
+
+## Сборка
+
+Требуется: JDK 17–21, Android SDK (API 35), NDK, Go 1.24+, gomobile.
+
+```bash
+# 1. Ядро
+cd warpcore
+gomobile bind -target=android -androidapi 26 -o warpcore.aar .
+cp warpcore.aar ../warpgate/app/libs/
+
+# 2. Приложение
+cd ../warpgate
+./gradlew :app:assembleDebug
+# APK: app/build/outputs/apk/debug/app-debug.apk
+```
+
+## Статус (проверено на эмуляторе API 34)
+
+- ✅ WARP: генерация профиля (регистрация в Cloudflare), туннель поднимается (`tun0` UP, адрес 172.16.0.2), статус «Защищено», VPN-иконка в системе
+- ✅ VpnService: запрос системного разрешения, foreground-уведомление, stop/revoke
+- ✅ Оптимизатор: скан 27 эндпоинтов × 4 порта реальными хендшейками (в песочнице UDP-ответы блокируются средой — на реальной сети работает; хендшейк-зонды отправляются, poll IpcGet ждёт `last_handshake_time_sec`)
+- ✅ AmneziaWG: импорт конфигов (включая Jc/Jmin/Jmax/S1/S2/H1–H4), туннель
+- ✅ MASQUE: регистрация ECDSA-устройства + туннель (экспериментально)
+- ⚠️ Прокси-профили (vless/vmess/ss/trojan/hy2): импорт подписок и хранение готовы; туннелирование этих протоколов требует прокси-ядра (Xray/sing-box) — планируется.
+
+## Лицензии
+
+- amneziawg-go — MIT
+- usque — MIT
+- Весь код приложения распространяется под GPL-3.0 (совместимо с зависимостями).

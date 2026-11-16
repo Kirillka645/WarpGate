@@ -1,0 +1,24 @@
+# Gradle
+warpgate/.gradle/
+warpgate/build/
+warpgate/app/build/
+warpgate/local.properties
+warpgate/.idea/
+*.iml
+
+# Go core build outputs (rebuilt by CI / README steps)
+warpcore/warpcore.aar
+warpgate/app/libs/warpcore.aar
+
+# Go
+warpcore/warpcore
+warpcore/cmd/*/*.exe
+
+# Local artifacts
+WarpGate-v*.apk
+*.apk
+!warpgate/app/build/outputs/apk/**/app-debug.apk
+shots/
+
+# Unrelated workspace content
+_extract/
