@@ -1,24 +1,15 @@
 package warpcore
 
 import (
-	"bytes"
 	"crypto/ecdh"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
 	"math/big"
-	"net/http"
 	"regexp"
 	"strings"
-	"time"
 )
-
-// warpGenAPIBase is the WARP API generation used by third-party config
-// generators. It returns the standard WARP peer key and the client IPv6
-// address, which is exactly what an exportable AmneziaWG / Clash config needs.
-const warpGenAPIBase = "https://api.cloudflareclient.com/v0i1909051800"
 
 // warpGenPeerPublicKey is the well-known Cloudflare WARP WireGuard public key.
 // It is only used as a fallback when the registration response omits the peer
@@ -82,46 +73,6 @@ type WarpGenRegistration struct {
 	AddressV4  string `json:"address_v4"`
 }
 
-// warpGenRegisterResponse models the WARP registration reply. Depending on the
-// API generation the payload is either nested under "result" or flat at the
-// top level, so both shapes are accepted.
-type warpGenRegisterResponse struct {
-	Result *struct {
-		ID    string `json:"id"`
-		Token string `json:"token"`
-	} `json:"result"`
-	ID    string `json:"id"`
-	Token string `json:"token"`
-	Config struct {
-		Peers []struct {
-			PublicKey string `json:"public_key"`
-		} `json:"peers"`
-		Interface struct {
-			Addresses struct {
-				V4 string `json:"v4"`
-				V6 string `json:"v6"`
-			} `json:"addresses"`
-		} `json:"interface"`
-	} `json:"config"`
-}
-
-// warpGenPatchResponse models the WARP activation reply.
-type warpGenPatchResponse struct {
-	Result *struct {
-		Config struct {
-			Peers []struct {
-				PublicKey string `json:"public_key"`
-			} `json:"peers"`
-			Interface struct {
-				Addresses struct {
-					V4 string `json:"v4"`
-					V6 string `json:"v6"`
-				} `json:"addresses"`
-			} `json:"interface"`
-		} `json:"config"`
-	} `json:"result"`
-}
-
 // WarpGenRegister registers a freshly generated WireGuard key with Cloudflare
 // WARP and enables the WARP tunnel for it. The private key never leaves the
 // device: only its public half is sent to the API.
@@ -133,112 +84,20 @@ func WarpGenRegister() (*WarpGenRegistration, error) {
 	pubB64 := base64.StdEncoding.EncodeToString(priv.PublicKey().Bytes())
 	privB64 := base64.StdEncoding.EncodeToString(priv.Bytes())
 
-	body, err := json.Marshal(map[string]any{
-		"install_id": "",
-		"tos":        time.Now().UTC().Format("2006-01-02T15:04:05.000Z"),
-		"key":        pubB64,
-		"fcm_token":  "",
-		"type":       "ios",
-		"locale":     "en_US",
-	})
+	dev, err := registerWarpDevice("Android", pubB64)
 	if err != nil {
 		return nil, err
 	}
 
-	client := &http.Client{Timeout: 20 * time.Second}
-	req, err := http.NewRequest(http.MethodPost, warpGenAPIBase+"/reg", bytes.NewReader(body))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "okhttp/3.12.1")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("warp register: %w", err)
-	}
-	defer resp.Body.Close()
-	raw, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("warp register: HTTP %d: %s", resp.StatusCode, truncate(string(raw), 200))
-	}
-
-	var rr warpGenRegisterResponse
-	if err := json.Unmarshal(raw, &rr); err != nil {
-		return nil, fmt.Errorf("warp register: %w", err)
-	}
-
-	id, token := rr.ID, rr.Token
-	if rr.Result != nil {
-		if id == "" {
-			id = rr.Result.ID
-		}
-		if token == "" {
-			token = rr.Result.Token
-		}
-	}
-	if id == "" || token == "" {
-		return nil, fmt.Errorf("warp register: malformed response (no id/token)")
-	}
-
-	// Enable the WARP tunnel for the freshly registered device.
-	patch, err := json.Marshal(map[string]any{"warp_enabled": true})
-	if err != nil {
-		return nil, err
-	}
-	req2, err := http.NewRequest(http.MethodPatch, warpGenAPIBase+"/reg/"+id, bytes.NewReader(patch))
-	if err != nil {
-		return nil, err
-	}
-	req2.Header.Set("Content-Type", "application/json")
-	req2.Header.Set("User-Agent", "okhttp/3.12.1")
-	req2.Header.Set("Authorization", "Bearer "+token)
-
-	resp2, err := client.Do(req2)
-	if err != nil {
-		return nil, fmt.Errorf("warp activate: %w", err)
-	}
-	defer resp2.Body.Close()
-	raw2, _ := io.ReadAll(resp2.Body)
-	if resp2.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("warp activate: HTTP %d: %s", resp2.StatusCode, truncate(string(raw2), 200))
-	}
-
-	var pr warpGenPatchResponse
-	if err := json.Unmarshal(raw2, &pr); err != nil {
-		return nil, fmt.Errorf("warp activate: %w", err)
-	}
-
-	reg := &WarpGenRegistration{
-		DeviceID:   id,
-		Token:      token,
+	return &WarpGenRegistration{
+		DeviceID:   dev.ID,
+		Token:      dev.Token,
 		PrivateKey: privB64,
 		PublicKey:  pubB64,
-		PeerPub:    warpGenPeerPublicKey,
-		ClientIPv6: rr.Config.Interface.Addresses.V6,
-		AddressV4:  rr.Config.Interface.Addresses.V4,
-	}
-	if len(rr.Config.Peers) > 0 && rr.Config.Peers[0].PublicKey != "" {
-		reg.PeerPub = rr.Config.Peers[0].PublicKey
-	}
-	if pr.Result != nil {
-		if reg.ClientIPv6 == "" {
-			reg.ClientIPv6 = pr.Result.Config.Interface.Addresses.V6
-		}
-		if reg.AddressV4 == "" {
-			reg.AddressV4 = pr.Result.Config.Interface.Addresses.V4
-		}
-		if len(pr.Result.Config.Peers) > 0 && pr.Result.Config.Peers[0].PublicKey != "" {
-			reg.PeerPub = pr.Result.Config.Peers[0].PublicKey
-		}
-	}
-	if reg.ClientIPv6 == "" {
-		return nil, fmt.Errorf("warp activate: response has no client IPv6 address")
-	}
-	if reg.AddressV4 == "" {
-		reg.AddressV4 = warpGenClientIPv4
-	}
-	return reg, nil
+		PeerPub:    dev.PeerPub,
+		ClientIPv6: dev.AddressV6,
+		AddressV4:  dev.AddressV4,
+	}, nil
 }
 
 // WarpGenAmneziaWG builds an AmneziaWG 1.5 (.conf) configuration for Cloudflare

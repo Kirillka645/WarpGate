@@ -39,6 +39,8 @@ object AppState {
         private set
     var registerBusy by mutableStateOf(false)
         private set
+    var masqueBusy by mutableStateOf(false)
+        private set
 
     fun init(ctx: Context) {
         Store.init(ctx)
@@ -134,7 +136,7 @@ object AppState {
     /** Creates a MASQUE (WARP over HTTP/3) profile via the Go core. */
     suspend fun createMasqueProfile(): Result<Profile> = withContext(Dispatchers.IO) {
         try {
-            registerBusy = true
+            masqueBusy = true
             runCatching {
                 val json = WarpEngine.masqueRegister()
                 val parsed = Json.parseToJsonElement(json).jsonObject
@@ -161,7 +163,7 @@ object AppState {
                 profile
             }
         } finally {
-            registerBusy = false
+            masqueBusy = false
         }
     }
 

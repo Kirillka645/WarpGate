@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -56,6 +57,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.warpgate.app.core.WarpErrors
 import com.warpgate.app.data.Profile
 import com.warpgate.app.ui.AppState
 import com.warpgate.app.ui.screens.GeneratorScreen
@@ -177,7 +179,9 @@ fun MainApp(onConnectRequest: (Profile) -> Unit) {
                                 AppState.showToast("Конфиг готов: ${it.fileName}")
                             }
                             .onFailure {
-                                AppState.showToast(it.message ?: "Не удалось получить конфиг")
+                                AppState.showToast(
+                                    WarpErrors.humanize(it.message, "Не удалось получить конфиг")
+                                )
                             }
                     }
                 }
@@ -212,19 +216,27 @@ fun MainApp(onConnectRequest: (Profile) -> Unit) {
             AddSheet(
                 onDismiss = { showAddSheet = false },
                 onCreateWarp = {
-                    showAddSheet = false
                     scope.launch {
                         AppState.createWarpProfile(ctx)
-                            .onSuccess { AppState.showToast("WARP-профиль создан") }
-                            .onFailure { AppState.showToast(it.message ?: "Ошибка регистрации") }
+                            .onSuccess {
+                                showAddSheet = false
+                                AppState.showToast("WARP-профиль создан")
+                            }
+                            .onFailure {
+                                AppState.showToast(WarpErrors.forProfile(it.message))
+                            }
                     }
                 },
                 onCreateMasque = {
-                    showAddSheet = false
                     scope.launch {
                         AppState.createMasqueProfile()
-                            .onSuccess { AppState.showToast("MASQUE-профиль создан") }
-                            .onFailure { AppState.showToast(it.message ?: "Ошибка регистрации MASQUE") }
+                            .onSuccess {
+                                showAddSheet = false
+                                AppState.showToast("MASQUE-профиль создан")
+                            }
+                            .onFailure {
+                                AppState.showToast(WarpErrors.humanize(it.message, "Ошибка регистрации MASQUE"))
+                            }
                     }
                 },
                 onImportAwg = { text, name ->
@@ -331,7 +343,8 @@ private fun AddSheet(
                     Text("Добавить ключ", color = Text0, fontSize = 19.sp, fontWeight = FontWeight.Bold)
                     AddOption(
                         Icons.Filled.Bolt, "WARP-профиль",
-                        "Регистрация в Cloudflare + выбор лучшего эндпоинта"
+                        "Регистрация в Cloudflare + выбор лучшего эндпоинта",
+                        busy = AppState.registerBusy
                     ) { onCreateWarp() }
                     AddOption(
                         Icons.Filled.Key, "AmneziaWG",
@@ -339,7 +352,8 @@ private fun AddSheet(
                     ) { mode = AddMode.AWG }
                     AddOption(
                         Icons.Filled.Lock, "MASQUE",
-                        "WARP поверх HTTP/3 (экспериментально)"
+                        "WARP поверх HTTP/3 (экспериментально)",
+                        busy = AppState.masqueBusy
                     ) { onCreateMasque() }
                     AddOption(
                         Icons.Filled.Link, "Подписка / ссылка",
@@ -403,21 +417,38 @@ private fun fieldColors() = OutlinedTextFieldDefaults.colors(
 )
 
 @Composable
-private fun AddOption(icon: ImageVector, title: String, subtitle: String, onClick: () -> Unit) {
+private fun AddOption(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    busy: Boolean = false,
+    onClick: () -> Unit
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
             .background(Surface0)
-            .clickable(onClick = onClick)
+            .clickable(enabled = !busy, onClick = onClick)
             .padding(14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(icon, null, tint = Accent, modifier = Modifier.size(24.dp))
+        if (busy) {
+            CircularProgressIndicator(
+                color = Accent,
+                strokeWidth = 2.dp,
+                modifier = Modifier.size(24.dp)
+            )
+        } else {
+            Icon(icon, null, tint = Accent, modifier = Modifier.size(24.dp))
+        }
         Spacer(Modifier.size(12.dp))
         Column {
             Text(title, color = Text0, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
-            Text(subtitle, color = Text1, fontSize = 12.sp)
+            Text(
+                if (busy) "Регистрирую в Cloudflare…" else subtitle,
+                color = Text1, fontSize = 12.sp
+            )
         }
     }
 }

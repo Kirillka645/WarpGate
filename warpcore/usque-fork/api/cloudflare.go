@@ -86,7 +86,7 @@ func Register(model, locale, jwt string, acceptTos bool) (models.AccountData, er
 		req.Header.Set("CF-Access-Jwt-Assertion", jwt)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := internal.Client.Do(req)
 	if err != nil {
 		return models.AccountData{}, fmt.Errorf("failed to send request: %v", err)
 	}
@@ -149,7 +149,7 @@ func EnrollKey(accountData models.AccountData, pubKey []byte, deviceName string)
 	}
 	req.Header.Set("Authorization", "Bearer "+accountData.Token)
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := internal.Client.Do(req)
 	if err != nil {
 		return models.AccountData{}, nil, fmt.Errorf("failed to send request: %v", err)
 	}
