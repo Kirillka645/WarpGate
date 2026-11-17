@@ -35,6 +35,14 @@ Go-ядро (`warpcore/`) собирается командой `gomobile bind` 
 
 Формат вывода зафиксирован golden-тестами `warpcore/warpgen_test.go`: они сверяют SHA-256 готовых конфигов с эталонной реализацией, поэтому случайное изменение формата не пройдёт незаметно.
 
+Маски I1 и шаблон Clash вендорены в `warpcore/warpgen_assets.go` из проекта warp-config-ru. Пересобрать их при обновлении референса:
+
+```bash
+git clone --depth 1 https://github.com/AppsGanin/warp-config-ru /tmp/ref
+python warpcore/tools/extract_warpgen_assets.py /tmp/ref warpcore/warpgen_assets.go
+cd warpcore && go test ./...   # golden-хэши подтвердят, что формат не изменился
+```
+
 Тот же генератор доступен из командной строки:
 
 ```bash
