@@ -36,6 +36,7 @@ import com.warpgate.app.ui.components.InfoCard
 import com.warpgate.app.ui.components.ProfileCard
 import com.warpgate.app.ui.theme.Accent
 import com.warpgate.app.ui.theme.Bg0
+import com.warpgate.app.ui.theme.BottomNavContentPadding
 import com.warpgate.app.ui.theme.Green
 import com.warpgate.app.ui.theme.Surface0
 import com.warpgate.app.ui.theme.Text0
@@ -62,6 +63,9 @@ fun HomeScreen(
             .background(Bg0)
             .systemBarsPadding()
             .padding(horizontal = 18.dp)
+            // Keep the last row reachable: the floating bottom navigation is
+            // drawn on top of the content.
+            .padding(bottom = BottomNavContentPadding)
     ) {
         Spacer(Modifier.height(10.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {

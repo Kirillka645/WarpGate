@@ -32,6 +32,7 @@ import com.warpgate.app.ui.AppState
 import com.warpgate.app.ui.components.ProfileCard
 import com.warpgate.app.ui.components.SmallButton
 import com.warpgate.app.ui.theme.Bg0
+import com.warpgate.app.ui.theme.BottomNavContentPadding
 import com.warpgate.app.ui.theme.Text0
 import com.warpgate.app.ui.theme.Text1
 import com.warpgate.app.vpn.VpnSession
@@ -49,6 +50,9 @@ fun ProfilesScreen(
             .background(Bg0)
             .systemBarsPadding()
             .padding(horizontal = 18.dp)
+            // Keep the last card reachable: the floating bottom navigation is
+            // drawn on top of the content.
+            .padding(bottom = BottomNavContentPadding)
     ) {
         Spacer(Modifier.height(10.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {

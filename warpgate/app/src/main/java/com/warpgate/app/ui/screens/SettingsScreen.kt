@@ -21,6 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.warpgate.app.ui.theme.Bg0
+import com.warpgate.app.ui.theme.BottomNavContentPadding
 import com.warpgate.app.ui.theme.Surface0
 import com.warpgate.app.ui.theme.Text0
 import com.warpgate.app.ui.theme.Text1
@@ -34,6 +35,9 @@ fun SettingsScreen() {
             .systemBarsPadding()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 18.dp)
+            // Keep the last row reachable: the floating bottom navigation is
+            // drawn on top of the content.
+            .padding(bottom = BottomNavContentPadding)
     ) {
         Spacer(Modifier.height(10.dp))
         Text("Настройки", color = Text0, fontSize = 22.sp, fontWeight = FontWeight.Bold)

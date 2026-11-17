@@ -5,11 +5,12 @@ Android-клиент VPN с генерацией WARP-профилей, опти
 ## Возможности
 
 - **WARP-профили** — регистрация устройства в Cloudflare прямо из приложения (кнопка «+ → WARP-профиль»). Ключи x25519 генерируются на устройстве и не покидают его.
+- **Генератор конфигов** — вкладка «Генератор» регистрирует новое устройство в WARP и собирает готовый файл: `AmneziaWG .conf` или `Clash / Mihomo .yaml`. Формат совпадает с генератором [warp-config-ru](https://github.com/AppsGanin/warp-config-ru): те же I1-маски AmneziaWG, тот же DNS-обход геоблока, тот же пул эндпоинтов. Готовый конфиг копируется в буфер, отправляется в мессенджер или сохраняется в «Загрузки».
 - **Оптимизатор эндпоинтов** — перед подключением приложение замеряет RTT реального WireGuard-хендшейка до 27 эндпоинтов Cloudflare (162.159.192/193/195.x, 188.114.96/97.x на портах 2408/500/1701/4500) и автоматически выбирает самый быстрый. Показывает лучший и альтернативный варианты.
 - **AmneziaWG** — импорт конфигов `.conf` с обфускацией (параметры `Jc`, `Jmin`, `Jmax`, `S1`, `S2`, `H1–H4`, `I1–I5` в ядре) и подключение через ядро amneziawg-go.
 - **MASQUE** — WARP поверх HTTP/3 (`cf-connect-ip`, QUIC-датаграммы) — экспериментальный режим. Регистрация ECDSA-ключа (P-256), TLS client cert на 24 ч, пиннинг ключа сервера.
 - **Подписки как в Happ** — вставьте URL подписки (`https://…`, base64-тело) или список ссылок `vless://`, `vmess://`, `ss://`, `trojan://`, `hysteria2://` (hy2://). Узлы импортируются как профили.
-- Тёмная тема в стиле Happ, русский интерфейс, Material 3 (Jetpack Compose).
+- Тёмная тема в стиле Happ, русский интерфейс, Material 3 (Jetpack Compose), адаптивная иконка приложения.
 
 ## Архитектура
 
@@ -20,8 +21,36 @@ Android-клиент VPN с генерацией WARP-профилей, опти
 | Туннель WG/AWG | [amneziawg-go](https://github.com/amnezia-vpn/amneziawg-go) (форк в `warpcore/awg-fork`) |
 | MASQUE | [usque](https://github.com/Diniboy1123/usque) (форк в `warpcore/usque-fork`, MIT) |
 | Регистрация WARP | Go-ядро + API `api.cloudflareclient.com/v0a2158` |
+| Генератор конфигов | Go-ядро + API `api.cloudflareclient.com/v0i1909051800`, формат warp-config-ru |
 
-Go-ядро (`warpcore/`) собирается командой `gomobile bind` в `warpcore.aar` и предоставляет: `RegisterWarp`, `ScanEndpoints`, `TunnelStart/Stop/Stats` (WG/AWG), `MasqueRegister`, `MasqueStart/Stop`.
+Go-ядро (`warpcore/`) собирается командой `gomobile bind` в `warpcore.aar` и предоставляет: `RegisterWarp`, `ScanEndpoints`, `TunnelStart/Stop/Stats` (WG/AWG), `MasqueRegister`, `MasqueStart/Stop`, а также генератор `WarpGenRegister` / `WarpGenAmneziaWG` / `WarpGenClash` / `WarpGenRandomEndpoint`.
+
+### Генератор конфигов
+
+Генератор собран по мотивам [warp-config-ru](https://github.com/AppsGanin/warp-config-ru) (MIT) и повторяет его поведение:
+
+1. Генерируется пара ключей X25519, в API уходит только публичная половина.
+2. `POST /reg` + `PATCH /reg/{id}` на `api.cloudflareclient.com/v0i1909051800` — регистрация и включение WARP.
+3. Собирается конфиг выбранного формата с I1-маской AmneziaWG (мимикрия под QUIC/SIP-хендшейк), DNS-резолверами для обхода геоблока и MTU 1280.
+
+Формат вывода зафиксирован golden-тестами `warpcore/warpgen_test.go`: они сверяют SHA-256 готовых конфигов с эталонной реализацией, поэтому случайное изменение формата не пройдёт незаметно.
+
+Маски I1 и шаблон Clash вендорены в `warpcore/warpgen_assets.go` из проекта warp-config-ru. Пересобрать их при обновлении референса:
+
+```bash
+git clone --depth 1 https://github.com/AppsGanin/warp-config-ru /tmp/ref
+python warpcore/tools/extract_warpgen_assets.py /tmp/ref warpcore/warpgen_assets.go
+cd warpcore && go test ./...   # golden-хэши подтвердят, что формат не изменился
+```
+
+Тот же генератор доступен из командной строки:
+
+```bash
+cd warpcore
+go run ./cmd/warpgen -format amneziawg      # .conf для AmneziaVPN
+go run ./cmd/warpgen -format clash -ipv6   # .yaml для Clash / Mihomo
+go run ./cmd/warpgen -host 162.159.193.1 -port 2408
+```
 
 ### Патчи в форках
 
@@ -43,6 +72,24 @@ cd ../warpgate
 ./gradlew :app:assembleDebug
 # APK: app/build/outputs/apk/debug/app-debug.apk
 ```
+
+## Тесты
+
+```bash
+# Go-ядро: формат конфигов, пулы эндпоинтов, golden-хэши против warp-config-ru
+cd warpcore && go test ./...
+
+# Android: парсеры AmneziaWG и share-ссылок
+cd warpgate && ./gradlew :app:testDebugUnitTest
+```
+
+## Иконка приложения
+
+Иконка собрана из одного SVG-макета: адаптивный foreground (щит с вырезанной молнией), monochrome-слой для тем Android 13+ и растровые mipmap-версии для старых лаунчеров.
+
+- макет: `warpgate/design/ic_launcher.svg`
+- рендер PNG: `node warpgate/design/render-icons.mjs` (нужен `sharp`)
+- ресурсы: `warpgate/app/src/main/res/{drawable,mipmap-*}`
 
 ## Статус (проверено на эмуляторе API 34)
 

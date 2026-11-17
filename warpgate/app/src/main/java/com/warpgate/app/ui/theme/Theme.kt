@@ -6,6 +6,7 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 
 // WarpGate dark palette (Happ-inspired)
 val Bg0 = Color(0xFF070B14)
@@ -22,6 +23,17 @@ val Amber = Color(0xFFF5A623)
 val Red = Color(0xFFFF5C7A)
 
 val Gradient = Brush.horizontalGradient(listOf(Accent, Accent2))
+
+/**
+ * Layout tokens.
+ *
+ * The app draws edge to edge, so every screen has to reserve room for the
+ * floating bottom navigation. [BottomNavContentPadding] keeps the last card
+ * reachable instead of hiding it under the navigation bar.
+ */
+val BottomNavContentPadding = 96.dp
+val BottomNavHeight = 64.dp
+val ScreenPadding = 18.dp
 
 private val DarkColors = darkColorScheme(
     primary = Accent,
