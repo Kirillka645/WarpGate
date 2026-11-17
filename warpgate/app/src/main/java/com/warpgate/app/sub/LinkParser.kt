@@ -87,19 +87,19 @@ object LinkParser {
         val body = link.removePrefix("ss://")
         val fragmentName = body.substringAfter('#', "")
         val main = body.substringBefore('#')
-        // Forms: base64(method:pass@host:port) | base64(method:pass)@host:port
-        val decodedMain = String(b64decode(main)).takeIf { decoded ->
-            decoded.contains('@') || decoded.contains(':')
-        } ?: main
-
-        val (userinfo, hostPart) = if (decodedMain.contains('@')) {
-            val idx = decodedMain.lastIndexOf('@')
-            decodedMain.substring(0, idx) to decodedMain.substring(idx + 1)
-        } else if (main.contains('@')) {
-            val idx = main.lastIndexOf('@')
-            String(b64decode(main.substring(0, idx))) to main.substring(idx + 1)
-        } else {
-            decodedMain to ""
+        // Two shapes in the wild:
+        //   base64(method:pass@host:port) — the whole payload is encoded
+        //   base64(method:pass)@host:port — only the credentials are encoded
+        val decodedWhole = decodeMaybe(main)
+        val (userinfo, hostPart) = when {
+            decodedWhole != null && decodedWhole.contains('@') ->
+                decodedWhole.substringBefore('@') to decodedWhole.substringAfter('@')
+            main.contains('@') -> {
+                val at = main.lastIndexOf('@')
+                val head = main.substring(0, at)
+                (decodeMaybe(head) ?: head) to main.substring(at + 1)
+            }
+            else -> main to ""
         }
 
         val hostPort = hostPart.substringBefore('?')
@@ -145,6 +145,16 @@ object LinkParser {
             Base64.getUrlDecoder().decode(s.trim())
         }
     }
+
+    /**
+     * Base64 decodes a string and returns null when it is not valid base64.
+     *
+     * Share links mix encoded and plain parts, so a failed decode is a normal
+     * outcome and not an error.
+     */
+    private fun decodeMaybe(s: String): String? = runCatching {
+        String(b64decode(s))
+    }.getOrNull()
 
     private fun queryParams(query: String): Map<String, String> =
         query.split('&')

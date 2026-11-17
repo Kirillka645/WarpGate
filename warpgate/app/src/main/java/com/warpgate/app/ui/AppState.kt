@@ -5,8 +5,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.warpgate.app.core.GeneratedConfig
+import com.warpgate.app.core.GenFormat
 import com.warpgate.app.core.WarpEndpoints
 import com.warpgate.app.core.WarpEngine
+import com.warpgate.app.core.WarpGenEngine
 import com.warpgate.app.data.AwgConfig
 import com.warpgate.app.data.EndpointStat
 import com.warpgate.app.data.MasqueConfig
@@ -159,6 +162,33 @@ object AppState {
             }
         } finally {
             registerBusy = false
+        }
+    }
+
+    // ---- Генератор экспортируемых конфигов ----
+
+    var genFormat by mutableStateOf(GenFormat.AMNEZIAWG)
+    var genHost by mutableStateOf<String?>(null)
+    var genPort by mutableStateOf<Int?>(null)
+    var genIpv6 by mutableStateOf(false)
+    var genBusy by mutableStateOf(false)
+        private set
+    var genResult by mutableStateOf<GeneratedConfig?>(null)
+        private set
+
+    /**
+     * Регистрирует новое устройство в Cloudflare WARP и собирает конфиг
+     * выбранного формата. Ключи генерируются на устройстве.
+     */
+    suspend fun generateConfig(): Result<GeneratedConfig> = withContext(Dispatchers.IO) {
+        try {
+            genBusy = true
+            runCatching {
+                WarpGenEngine.generate(genFormat, genHost, genPort, genIpv6)
+                    .also { genResult = it }
+            }
+        } finally {
+            genBusy = false
         }
     }
 

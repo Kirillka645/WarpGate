@@ -2,10 +2,13 @@ package com.warpgate.app
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -17,10 +20,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -31,6 +35,7 @@ import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -45,7 +50,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -53,6 +58,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.warpgate.app.data.Profile
 import com.warpgate.app.ui.AppState
+import com.warpgate.app.ui.screens.GeneratorScreen
 import com.warpgate.app.ui.screens.HomeScreen
 import com.warpgate.app.ui.screens.ProfilesScreen
 import com.warpgate.app.ui.screens.SettingsScreen
@@ -98,6 +104,14 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         AppState.init(this)
+
+        // The app draws edge to edge: the system bars are transparent and the
+        // UI has to handle the insets itself (see the bottom navigation).
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.dark(Color.TRANSPARENT)
+        )
+
         if (Build.VERSION.SDK_INT >= 33) {
             if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
                 != PackageManager.PERMISSION_GRANTED
@@ -113,7 +127,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private enum class Tab { HOME, KEYS, SETTINGS }
+private enum class Tab { HOME, KEYS, GENERATOR, SETTINGS }
 
 @Composable
 fun MainApp(onConnectRequest: (Profile) -> Unit) {
@@ -155,14 +169,33 @@ fun MainApp(onConnectRequest: (Profile) -> Unit) {
                 },
                 onAddClick = { showAddSheet = true }
             )
+            Tab.GENERATOR -> GeneratorScreen(
+                onGenerate = {
+                    scope.launch {
+                        AppState.generateConfig()
+                            .onSuccess {
+                                AppState.showToast("Конфиг готов: ${it.fileName}")
+                            }
+                            .onFailure {
+                                AppState.showToast(it.message ?: "Не удалось получить конфиг")
+                            }
+                    }
+                }
+            )
             Tab.SETTINGS -> SettingsScreen()
         }
 
-        // Bottom navigation
+        // Bottom navigation.
+        //
+        // The insets matter: without navigationBarsPadding the pill is drawn
+        // behind the system navigation bar (or the gesture handle), so the
+        // lower items swallow the taps instead of switching the tab.
         Row(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = 14.dp, start = 18.dp, end = 18.dp)
+                .navigationBarsPadding()
+                .imePadding()
+                .padding(horizontal = 18.dp, vertical = 10.dp)
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(24.dp))
                 .background(Bg1.copy(alpha = 0.96f))
@@ -171,6 +204,7 @@ fun MainApp(onConnectRequest: (Profile) -> Unit) {
         ) {
             NavItem(Icons.Filled.Home, "Главная", tab == Tab.HOME) { tab = Tab.HOME }
             NavItem(Icons.Filled.Key, "Ключи", tab == Tab.KEYS) { tab = Tab.KEYS }
+            NavItem(Icons.Filled.Tune, "Генератор", tab == Tab.GENERATOR) { tab = Tab.GENERATOR }
             NavItem(Icons.Filled.Settings, "Настройки", tab == Tab.SETTINGS) { tab = Tab.SETTINGS }
         }
 
@@ -216,6 +250,8 @@ fun MainApp(onConnectRequest: (Profile) -> Unit) {
             Box(
                 Modifier
                     .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .imePadding()
                     .padding(bottom = 92.dp)
                     .clip(RoundedCornerShape(14.dp))
                     .background(Surface1)
@@ -227,6 +263,12 @@ fun MainApp(onConnectRequest: (Profile) -> Unit) {
     }
 }
 
+/**
+ * Пункт нижней навигации.
+ *
+ * The touch target is at least 48 dp tall so the item stays comfortable to hit
+ * with the navigation bar inset applied.
+ */
 @Composable
 private fun NavItem(icon: ImageVector, label: String, selected: Boolean, onClick: () -> Unit) {
     val c = if (selected) Accent else Text1
@@ -234,12 +276,19 @@ private fun NavItem(icon: ImageVector, label: String, selected: Boolean, onClick
         modifier = Modifier
             .clip(RoundedCornerShape(18.dp))
             .clickable(onClick = onClick)
-            .padding(horizontal = 18.dp, vertical = 8.dp),
+            .heightIn(min = 48.dp)
+            .padding(horizontal = 10.dp, vertical = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
         Icon(icon, label, tint = c, modifier = Modifier.size(22.dp))
-        Text(label, color = c, fontSize = 10.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
+        Text(
+            label,
+            color = c,
+            fontSize = 10.sp,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+            maxLines = 1
+        )
     }
 }
 
@@ -261,7 +310,7 @@ private fun AddSheet(
     Box(
         Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.55f))
+            .background(ComposeColor.Black.copy(alpha = 0.55f))
             .clickable(onClick = onDismiss)
     ) {
         Column(
@@ -271,7 +320,8 @@ private fun AddSheet(
                 .clip(RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp))
                 .background(Bg1)
                 .clickable(enabled = false) {}
-                .systemBarsPadding()
+                .navigationBarsPadding()
+                .imePadding()
                 .verticalScroll(scroll)
                 .padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -383,7 +433,7 @@ private fun DialogButton(text: String, filled: Boolean, onClick: () -> Unit) {
     ) {
         Text(
             text,
-            color = if (filled) Color.White else Text0,
+            color = if (filled) ComposeColor.White else Text0,
             fontWeight = FontWeight.SemiBold,
             fontSize = 14.sp
         )
